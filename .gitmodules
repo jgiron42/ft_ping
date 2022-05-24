@@ -1,0 +1,4 @@
+[submodule "libft"]
+	path = libft
+	url = git@github.com:jgiron42/libft.git
+	branch = no_norm
