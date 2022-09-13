@@ -22,6 +22,7 @@ typedef struct	s_config
 	bool	ipv6;
 	char	*program_name;
 	char 	*destination;
+	bool	is_privileged: 1;
 	bool	verbose 	: 1;
 	bool	help		: 1;
 	bool	quiet		: 1;
@@ -30,6 +31,9 @@ typedef struct	s_config
 	bool	timestamp	: 1;
 	bool	broadcast	: 1;
 	bool	flood		: 1;
+	int		interval;
+	int		pattern_length;
+	char	pattern[16];
 	char	*error;
 	int		ttl;
 	int		count;
@@ -37,10 +41,14 @@ typedef struct	s_config
 
 typedef struct t_packet
 {
+	int					icmp_type;
+	int					icmp_code;
 	int					seq;
 	long long int		date;
+	long long int		date_request;
 	ssize_t 			size;
 	int					ttl;
+	int					info;
 	char				ipstr[50];
 	struct sockaddr_in	addr;
 	bool				replied;
@@ -63,6 +71,7 @@ typedef struct				s_stat
 	int	send;
 	int	received;
 	int	duplicates;
+	int	errors;
 	int	nlost;
 	long long time;
 	long long average;
@@ -70,6 +79,8 @@ typedef struct				s_stat
 	long long min;
 	long long max;
 }							t_stat;
+
+#define DUPLICATE_SIZE 0x100000
 
 typedef	struct session
 {
@@ -79,6 +90,7 @@ typedef	struct session
 	int					type;
 	struct	addrinfo	*dst;
 	t_stat				stats;
+	char 				duplicate_table[DUPLICATE_SIZE];
 }				session;
 
 typedef enum	e_status
@@ -88,30 +100,52 @@ typedef enum	e_status
 	FATAL,
 }				t_status;
 
-typedef	struct				s_echo_datagram
+typedef	struct				s_icmp_datagram
 {
 	unsigned char		type;
 	unsigned char		code;
 	unsigned short int	checksum;
-	unsigned short int	identifier;
-	unsigned short int	sequence;
-	char		data[48];
+	union {
+		struct {
+			unsigned short int identifier;
+			unsigned short int sequence;
+			long long date_send;
+		} echo;
+		struct {
+			int unused;
+			struct iphdr ip;
+			unsigned char original[64];
+		} ttl_exceeded; // 11
+		struct {
+			unsigned char pointer;
+			unsigned char unused[3];
+			struct iphdr ip;
+			unsigned char original[64];
+		} parameter_problem;
+		char data[48];
+	};
 } __attribute__((packed))	t_echo_datagram;
 
 t_status	parse_config(int argc, char **argv, t_config *config);
 void		reset_config(t_config *config);
 void		show_help();
 t_status	ft_ping(t_config config);
+void	my_perror(t_config config, char *prefix);
 
 t_status		print_timestamp();
 int	get_precision(long long time);
-t_status	print_pong(t_config config, t_packet pong, t_packet ping);
+t_status	print_pong(t_config config, t_packet pong);
 t_status	print_ping(t_config conf, session ses, t_packet ping);
+t_status	print_short_stat(t_stat stats);
 t_status	print_stat(t_config conf, t_stat stats);
 float	ft_sqrt(float nb);
 long long int ft_utime(void);
 
+char	check_duplicate(session *ses, int seq);
+void	set_duplicate(session *ses, int seq);
+void	clear_duplicate(session *ses, int seq);
 
+int 	parse_buf(char *dst, char *src, size_t dst_len);
 bool int_validator(char *str, bool is_signed, char terminator);
 bool		range_validator(char *str, char *lower_bound, char *upper_bound);
 bool		ipv4_validator(char *str);
