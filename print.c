@@ -1,6 +1,6 @@
 #include "ft_ping.h"
 
-t_status		print_timestamp(t_config conf)
+status		print_timestamp(t_config conf)
 {
 	struct timeval tv;
 	if (gettimeofday(&tv, NULL) == -1)
@@ -17,7 +17,7 @@ int	get_precision(long long time)
 	return 3 - (time /1000 > 0) - (time /1000 > 10) - (time /1000 > 100);
 }
 
-t_status	print_icmp_message(t_packet pong)
+status	print_icmp_message(t_packet pong)
 {
 	switch (pong.icmp_type) {
 		case ICMP_ECHOREPLY:
@@ -107,25 +107,29 @@ t_status	print_icmp_message(t_packet pong)
 	return OK;
 }
 
-t_status	print_pong(t_config config, t_packet pong)
+status	print_pong(t_config config, t_packet pong)
 {
 	if (config.timestamp && print_timestamp(config) != OK)
 		return (FATAL);
 	if (pong.icmp_type == ICMP_ECHOREPLY) {
 		printf("%zu bytes from %s: icmp_seq=%d ", pong.size, pong.ipstr,pong.seq);
-		printf("ttl=%d time=%.*f ms%s", pong.ttl, get_precision((pong.date - pong.date_request)),
-			   (float) (pong.date - pong.date_request) / 1000, config.audible ? "\a" : "");
+		printf("ttl=%d time=%.*f ms", pong.ttl, get_precision((pong.date - pong.date_request)),
+			   (float) (pong.date - pong.date_request) / 1000);
+		if (pong.is_dup)
+			printf(" (DUP!)");
 	}
 	else
 	{
 		printf("From %s: icmp_seq=%d ", pong.ipstr,pong.seq);
 		print_icmp_message(pong);
 	}
+	if (config.audible)
+		printf("\a");
 	printf("\n");
 	return (OK);
 }
 
-t_status	print_ping(t_config conf, session ses, t_packet ping)
+status	print_ping(t_config conf, session ses, t_packet ping)
 {
 	char ipbuf[50];
 	(void)ses; (void)ping; (void)conf; (void)ipbuf;
@@ -140,7 +144,7 @@ t_status	print_ping(t_config conf, session ses, t_packet ping)
 	return (OK);
 }
 
-t_status	print_short_stat(t_stat stats)
+status	print_short_stat(t_stat stats)
 {
 
 	stats.time = ft_utime() - stats.time;
@@ -148,13 +152,14 @@ t_status	print_short_stat(t_stat stats)
 	if (stats.received > 0) {
 		long long int average = stats.average / stats.received;
 		long long int sdev = ft_sqrt((stats.sdev / stats.received) - (average * average));
-		printf(", min/avg/max/mdev = %.3f/%.3f/%.3f/%.3f ms\n", (float) stats.min / 1000, (float) average / 1000,
+		printf(", min/avg/max/mdev = %.3f/%.3f/%.3f/%.3f ms", (float) stats.min / 1000, (float) average / 1000,
 			   (float) stats.max / 1000, (float) sdev / 1000);
+		printf("\n");
 	}
 	return (OK);
 }
 
-t_status	print_stat(t_config conf, t_stat stats)
+status	print_stat(t_config conf, t_stat stats)
 {
 	if (stats.received)
 	{

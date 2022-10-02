@@ -2,7 +2,7 @@
 
 int main(int argc, char **argv)
 {
-	t_config	config = {.count = 0, .ipv6 = false};
+	t_config	config = {.count = 0, .ipv6 = false, .interval = 1};
 	int			ret = 0;
 	signal(SIGPIPE, SIG_IGN);
 	if (parse_config(argc, argv, &config) != OK)

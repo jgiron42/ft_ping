@@ -27,7 +27,7 @@ unsigned short int checksum(void *data, size_t size)
  * @param datagram
  * @return
  */
-t_status getdatagram(t_echo_datagram *datagram, int sequence, t_config config)
+status getdatagram(t_echo_datagram *datagram, int sequence, t_config config)
 {
 	if (config.pattern_length)
 		for (size_t i = 0; i < sizeof *datagram; i += config.pattern_length)
@@ -45,7 +45,7 @@ t_status getdatagram(t_echo_datagram *datagram, int sequence, t_config config)
 	return (OK);
 }
 
-t_status	get_host(t_config config,struct addrinfo **res)
+status	get_host(t_config config,struct addrinfo **res)
 {
 	struct addrinfo hints = {};
 	hints.ai_family = config.ipv6 ? AF_INET6 : AF_INET;
@@ -63,7 +63,7 @@ t_status	get_host(t_config config,struct addrinfo **res)
 	return (OK);
 }
 
-t_status	send_ping(t_config config, session *ses,t_packet *ping)
+status	send_ping(t_config config, session *ses,t_packet *ping)
 {
 	static	int n = 0;
 	t_echo_datagram datagram;
@@ -92,9 +92,9 @@ enum {
 	READY = 2,
 	ABORTED = 4,
 	PRINT_CURRENT = 8,
-} status;
+} program_status;
 
-t_status	receive_pong(t_config conf, session ses, t_packet *pong)
+status	receive_pong(t_config conf, session ses, t_packet *pong)
 {
 	struct {
 		struct ip iphdr;
@@ -174,6 +174,8 @@ t_status	receive_pong(t_config conf, session ses, t_packet *pong)
 				my_perror(conf, "gettimeofday");
 				return (FATAL);
 			}
+			if (check_duplicate(ses, pong->seq))
+				pong->is_dup = true;
 			break;
 		case ICMP_DEST_UNREACH:
 		case ICMP_SOURCE_QUENCH:
@@ -187,14 +189,14 @@ t_status	receive_pong(t_config conf, session ses, t_packet *pong)
 void handler(int sig)
 {
 	if (sig == SIGALRM)
-		status |= READY;
+		program_status |= READY;
 	else if (sig == SIGQUIT)
-		status |= PRINT_CURRENT;
+		program_status |= PRINT_CURRENT;
 	else
-		status |= ABORTED;
+		program_status |= ABORTED;
 }
 
-t_status	init_socket(t_config *config, session *ses)
+status	init_socket(t_config *config, session *ses)
 {
 	if (get_host(*config, &ses->dst) != OK)
 		return (FATAL);
@@ -220,19 +222,19 @@ t_status	init_socket(t_config *config, session *ses)
 }
 
 
-t_status	loop(t_config config, session *ses)
+status	loop(t_config config, session *ses)
 {
 	t_packet ping = {};
 	t_packet pong = {};
 
-	while (!(status & ABORTED) && (config.count == 0 || ses->stats.received < config.count))
+	while (!(program_status & ABORTED) && (config.count == 0 || ses->stats.received < config.count))
 	{
-		if (status & PRINT_CURRENT)
+		if (program_status & PRINT_CURRENT)
 		{
 			print_short_stat(ses->stats);
-			status -= PRINT_CURRENT;
+			program_status -= PRINT_CURRENT;
 		}
-		if (status & READY && (!config.count || ses->stats.send < config.count))
+		if (program_status & READY && (!config.count || ses->stats.send < config.count))
 		{
 			if (send_ping(config, ses, &ping) == FATAL)
 				return (FATAL);
@@ -240,7 +242,7 @@ t_status	loop(t_config config, session *ses)
 				print_ping(config, *ses, ping);
 			if (config.interval) {
 				alarm(config.interval);
-				status -= READY;
+				program_status -= READY;
 			}
 			else if (getuid())
 			{
@@ -256,7 +258,7 @@ t_status	loop(t_config config, session *ses)
 					return (FATAL);
 				time = pong.date - pong.date_request;
 				if (pong.icmp_type == ICMP_ECHOREPLY) {
-					if (!check_duplicate(ses, pong.seq)) {
+					if (!check_duplicate(*ses, pong.seq)) {
 						ses->stats.received++;
 						ses->stats.average += time;
 						ses->stats.sdev += time * time;
@@ -278,7 +280,7 @@ t_status	loop(t_config config, session *ses)
 	return (OK);
 }
 
-t_status	ft_ping(t_config config)
+status	ft_ping(t_config config)
 {
 	session			ses = {};
 	ses.stats = (t_stat){.min = LLONG_MAX};
@@ -288,7 +290,7 @@ t_status	ft_ping(t_config config)
 
 	if (init_socket(&config, &ses) != OK)
 		return (FATAL);
-	status = READY;
+	program_status = READY;
 	ses.stats.time = ft_utime();
 	loop(config, &ses);
 	print_stat(config, ses.stats);

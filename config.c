@@ -1,6 +1,6 @@
 #include "ft_ping.h"
 
-t_status	parse_config(int argc, char **argv, t_config *config) {
+status	parse_config(int argc, char **argv, t_config *config) {
 	int ret;
 
 	config->program_name = ft_strdup(argv[0]);

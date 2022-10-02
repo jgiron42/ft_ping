@@ -63,10 +63,10 @@ void	set_duplicate(session *ses, int seq)
 	ses->duplicate_table[seq / 8] |= 1 << seq % 8;
 }
 
-char	check_duplicate(session *ses, int seq)
+char	check_duplicate(session ses, int seq)
 {
 	seq %= (DUPLICATE_SIZE) * 8;
-	return ses->duplicate_table[seq / 8] & (1 << seq % 8);
+	return ses.duplicate_table[seq / 8] & (1 << seq % 8);
 }
 
 void	my_perror(t_config config, char *prefix)

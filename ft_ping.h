@@ -41,6 +41,7 @@ typedef struct	s_config
 
 typedef struct t_packet
 {
+	bool				is_dup;
 	int					icmp_type;
 	int					icmp_code;
 	int					seq;
@@ -93,12 +94,6 @@ typedef	struct session
 	char 				duplicate_table[DUPLICATE_SIZE];
 }				session;
 
-typedef enum	e_status
-{
-	OK,
-	KO,
-	FATAL,
-}				t_status;
 
 typedef	struct				s_icmp_datagram
 {
@@ -126,22 +121,22 @@ typedef	struct				s_icmp_datagram
 	};
 } __attribute__((packed))	t_echo_datagram;
 
-t_status	parse_config(int argc, char **argv, t_config *config);
+status	parse_config(int argc, char **argv, t_config *config);
 void		reset_config(t_config *config);
 void		show_help();
-t_status	ft_ping(t_config config);
+status	ft_ping(t_config config);
 void	my_perror(t_config config, char *prefix);
 
-t_status		print_timestamp();
+status		print_timestamp();
 int	get_precision(long long time);
-t_status	print_pong(t_config config, t_packet pong);
-t_status	print_ping(t_config conf, session ses, t_packet ping);
-t_status	print_short_stat(t_stat stats);
-t_status	print_stat(t_config conf, t_stat stats);
+status	print_pong(t_config config, t_packet pong);
+status	print_ping(t_config conf, session ses, t_packet ping);
+status	print_short_stat(t_stat stats);
+status	print_stat(t_config conf, t_stat stats);
 float	ft_sqrt(float nb);
 long long int ft_utime(void);
 
-char	check_duplicate(session *ses, int seq);
+char	check_duplicate(session ses, int seq);
 void	set_duplicate(session *ses, int seq);
 void	clear_duplicate(session *ses, int seq);
 
