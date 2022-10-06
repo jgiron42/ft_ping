@@ -132,7 +132,7 @@ void		show_help();
 int			ft_ping(t_config config);
 void		my_perror(t_config config, char *prefix);
 
-status			print_timestamp();
+status			print_timestamp(t_config conf);
 int				get_precision(double time);
 status			print_pong(t_config config, t_packet pong);
 status			print_ping(t_config conf, session ses, t_packet ping);
