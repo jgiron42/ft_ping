@@ -1,63 +1,25 @@
 #include "ft_ping.h"
 
-/**
- * ip checksum (see: https://datatracker.ietf.org/doc/html/rfc1071)
- * @param data address of the data to checksum
- * @param size size in bytes of the data
- * @return the checksum
- */
-unsigned short int checksum(void *data, size_t size)
-{
-	int ret = 0;
-	// sum
-	for (size_t i = 0; i < size / 2; i++)
-		ret += ((unsigned short *)data)[i];
-	// adding potential extra byte
-	if (size % 2)
-		ret += ((unsigned char *)data)[size - 1];
-	// folding
-	while (ret>>16)
-		ret = (ret & 0xffff) + (ret >> 16);
-	// returning 1's complement of the sum
-	return (~ret);
-}
+p_status program_status;
 
-/**
- * datagram for echo icmp message (see: https://datatracker.ietf.org/doc/html/rfc792 https://datatracker.ietf.org/doc/html/rfc4443)
- * @param datagram
- * @return
- */
-status getdatagram(t_echo_datagram *datagram, int sequence, t_config config)
+status	init_socket(t_config *config, session *ses)
 {
-	if (config.pattern_length)
-		for (size_t i = 0; i < sizeof *datagram; i += config.pattern_length)
-			memcpy((char *)datagram + i, config.pattern, config.pattern_length);
-	else
-		bzero(datagram, sizeof *datagram);
-	datagram->type = config.ipv6 ? 128 : ICMP_ECHO;
-	datagram->code = 0;
-	// set to 0 before the checksum computation
-	datagram->checksum = 0;
-	datagram->echo.identifier = getpid();
-	datagram->echo.sequence = htons(sequence);
-	datagram->echo.date_send = ft_utime();
-	datagram->checksum = checksum((unsigned short int *)datagram, sizeof(t_echo_datagram));
-	return (OK);
-}
-
-status	get_host(t_config config,struct addrinfo **res)
-{
-	struct addrinfo hints = {};
-	hints.ai_family = config.ipv6 ? AF_INET6 : AF_INET;
-	hints.ai_socktype = SOCK_RAW;
-	hints.ai_flags = AI_ADDRCONFIG;
-	if (is_broadcast(config.destination) && !config.broadcast)
-		dprintf(2, "warn: -b to enable broadcast\n");
-	int ret = getaddrinfo(config.destination, NULL, &hints, res);
-	if (ret)
+	ses->family = config->ipv6 ? AF_INET6 : AF_INET;
+	ses->type = SOCK_RAW;
+	ses->proto = config->ipv6 ? IPPROTO_ICMPV6 : IPPROTO_ICMP;
+	if ((ses->sock = socket(ses->family, ses->type, ses->proto)) == -1)
 	{
-	//		dprintf(2, "%s: getaddrinfo: %s\n", config.program_name, gai_strerror(ret));
-		dprintf(2, "%s: getaddrinfo: %s\n", config.program_name, "no detail because gai_strerror is not authorized HAHAHAHA!!!");
+		my_perror(*config, "socket");
+		return (FATAL);
+	}
+	if (get_host(*config, &ses->dst) != OK)
+		return (FATAL);
+	if ((config->broadcast && setsockopt(ses->sock,SOL_SOCKET, SO_BROADCAST,"\1", 8) == -1)
+		|| (config->debug && setsockopt(ses->sock,SOL_SOCKET, SO_DEBUG,"\1", 8) == -1)
+		|| (config->debug && setsockopt(ses->sock,SOL_IP, IP_RECVTTL,"\1", 8) == -1)
+		|| (config->ttl && setsockopt(ses->sock,SOL_IP, IP_TTL, &config->ttl, sizeof config->ttl) == -1))
+	{
+		my_perror(*config, "setsockopt");
 		return (FATAL);
 	}
 	return (OK);
@@ -71,7 +33,7 @@ status	send_ping(t_config config, session *ses,t_packet *ping)
 	*ping = (t_packet){};
 	ping->seq = ++n;
 	getdatagram(&datagram, ping->seq, config);
-	if ((ping->size = sendto(ses->sock, &datagram, sizeof(datagram), 0, ses->dst->ai_addr, ses->dst->ai_addrlen)) == -1)
+	if ((ping->size = sendto(ses->sock, &datagram, 64, 0, ses->dst->ai_addr, ses->dst->ai_addrlen)) == -1)
 	{
 		my_perror(config, "sendto");
 		return (FATAL);
@@ -86,13 +48,6 @@ status	send_ping(t_config config, session *ses,t_packet *ping)
 	ses->stats.send++;
 	return (OK);
 }
-
-enum {
-	WAITING = 1,
-	READY = 2,
-	ABORTED = 4,
-	PRINT_CURRENT = 8,
-} program_status;
 
 status	receive_pong(t_config conf, session ses, t_packet *pong)
 {
@@ -166,8 +121,9 @@ status	receive_pong(t_config conf, session ses, t_packet *pong)
 	switch(reply->type)
 	{
 		case ICMP_ECHOREPLY:
-			pong->seq = ntohs(reply->echo.sequence);
-			pong->date_request = reply->echo.date_send;
+//			pong->seq = ntohs(reply->echo.sequence);
+			pong->seq = reply->echo.sequence;
+			pong->date_request = reply->echo.date_send.tv_sec * 1000000 + reply->echo.date_send.tv_usec;
 			pong->date = ft_utime();
 			if (pong->date == -1)
 			{
@@ -181,12 +137,13 @@ status	receive_pong(t_config conf, session ses, t_packet *pong)
 		case ICMP_SOURCE_QUENCH:
 		case ICMP_TIME_EXCEEDED:
 			pong->seq = ntohs(nested->echo.sequence);
+			pong->seq = nested->echo.sequence;
 			break;
 	}
 	return (OK);
 }
 
-void handler(int sig)
+void	handler(int sig)
 {
 	if (sig == SIGALRM)
 		program_status |= READY;
@@ -196,36 +153,11 @@ void handler(int sig)
 		program_status |= ABORTED;
 }
 
-status	init_socket(t_config *config, session *ses)
-{
-	if (get_host(*config, &ses->dst) != OK)
-		return (FATAL);
-	ses->family = config->ipv6 ? AF_INET6 : AF_INET;
-	ses->type = SOCK_RAW;
-	ses->proto = config->ipv6 ? IPPROTO_ICMPV6 : IPPROTO_ICMP;
-	if ((ses->sock = socket(ses->family, ses->type, ses->proto)) == -1)
-	{
-		my_perror(*config, "socket");
-		return (FATAL);
-	}
-	int yes = 1;
-	if ((config->broadcast && setsockopt(ses->sock,SOL_SOCKET, SO_BROADCAST,"\1", 8) == -1)
-		|| (config->debug && setsockopt(ses->sock,SOL_SOCKET, SO_DEBUG,"\1", 8) == -1)
-		|| (config->debug && setsockopt(ses->sock,SOL_IP, IP_RECVTTL,"\1", sizeof yes) == -1)
-		|| (config->ttl && setsockopt(ses->sock,SOL_IP, IP_TTL, &config->ttl, sizeof config->ttl) == -1))
-	{
-		my_perror(*config, "setsockopt");
-		return (FATAL);
-	}
-
-	return (OK);
-}
-
-
 status	loop(t_config config, session *ses)
 {
 	t_packet ping = {};
 	t_packet pong = {};
+	int			pipes = 0;
 
 	while (!(program_status & ABORTED) && (config.count == 0 || ses->stats.received < config.count))
 	{
@@ -238,14 +170,14 @@ status	loop(t_config config, session *ses)
 		{
 			if (send_ping(config, ses, &ping) == FATAL)
 				return (FATAL);
+			pipes++;
 			if (ping.seq == 1)
 				print_ping(config, *ses, ping);
 			if (config.interval) {
 				alarm(config.interval);
 				program_status -= READY;
 			}
-			else if (getuid())
-			{
+			else if (getuid()) {
 				dprintf(2, "%s: cannot flood; minimal interval allowed for user is 200ms\n", config.program_name);
 				return (KO);
 			}
@@ -257,15 +189,18 @@ status	loop(t_config config, session *ses)
 				if (!config.quiet && !config.flood && print_pong(config, pong) != OK)
 					return (FATAL);
 				time = pong.date - pong.date_request;
+				if (pipes > ses->stats.max_pipe)
+					ses->stats.max_pipe = pipes;
+				pipes = 0;
 				if (pong.icmp_type == ICMP_ECHOREPLY) {
+					ses->stats.average += time;
+					ses->stats.sdev += time * time;
+					if (time > ses->stats.max)
+						ses->stats.max = time;
+					if (time < ses->stats.min)
+						ses->stats.min = time;
 					if (!check_duplicate(*ses, pong.seq)) {
 						ses->stats.received++;
-						ses->stats.average += time;
-						ses->stats.sdev += time * time;
-						if (time > ses->stats.max)
-							ses->stats.max = time;
-						if (time < ses->stats.min)
-							ses->stats.min = time;
 						set_duplicate(ses, pong.seq);
 					} else
 						ses->stats.duplicates++;
@@ -280,7 +215,7 @@ status	loop(t_config config, session *ses)
 	return (OK);
 }
 
-status	ft_ping(t_config config)
+int	ft_ping(t_config config)
 {
 	session			ses = {};
 	ses.stats = (t_stat){.min = LLONG_MAX};
@@ -289,10 +224,20 @@ status	ft_ping(t_config config)
 	signal(SIGQUIT, &handler);
 
 	if (init_socket(&config, &ses) != OK)
-		return (FATAL);
+	{
+		if (ses.dst)
+			freeaddrinfo(ses.dst);
+		return (2);
+	}
 	program_status = READY;
 	ses.stats.time = ft_utime();
+//	if (is_broadcast(config.destination))
+//		dprintf(2, "WARNING: pinging broadcast address\n");
 	loop(config, &ses);
 	print_stat(config, ses.stats);
-	return (OK);
+	if (ses.dst)
+		freeaddrinfo(ses.dst);
+	return (ses.stats.received == 0);
 }
+
+

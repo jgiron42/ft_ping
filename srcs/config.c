@@ -1,19 +1,20 @@
 #include "ft_ping.h"
+#define OPTIONS "-:vhabc:Dp:qt:" // "64dfi:"
 
 status	parse_config(int argc, char **argv, t_config *config) {
 	int ret;
 
-	config->program_name = ft_strdup(argv[0]);
+	config->program_name = argv[0];
 	config->count = 0;
 	config->ipv6 = false;
 	if (!config->program_name)
 		return (FATAL);
-	while ((ret = ft_getopt(argc, argv, "-:vhc:64badDqt:p:fi:")) != -1) {
+	while ((ret = ft_getopt(argc, argv, OPTIONS)) != -1) { // abcDp
 		switch (ret) {
 			case 1:
 				if (config->destination)
 					goto error;
-				config->destination = ft_strdup(ft_optarg);
+				config->destination = ft_optarg;
 				break;
 			case 'a':
 				config->audible = true;
@@ -36,7 +37,7 @@ status	parse_config(int argc, char **argv, t_config *config) {
 								ft_optarg + i);
 						goto error;
 					}
-				config->pattern_length = parse_buf(config->pattern, ft_optarg, 16);
+				config->pattern_length = parse_buf(config->pattern, (unsigned char *)ft_optarg, 16);
 				break;
 			}
 			case 'q':
@@ -66,12 +67,12 @@ status	parse_config(int argc, char **argv, t_config *config) {
 			case 'c':
 				if (!int_validator(ft_optarg, true, 0)) {
 					dprintf(2, "%s: invalid argument: '%s'\n", config->program_name, ft_optarg);
-					goto error;
+					return KO;
 				}
 				if (!range_validator(ft_optarg, "0", "9223372036854775808")) {
 					dprintf(2, "%s: invalid argument: '%s': out of range: 1 <= value <= 9223372036854775808\n",
 							config->program_name, ft_optarg);
-					goto error;
+					return KO;
 				}
 				config->count = ft_atoi(ft_optarg); // TODO: atol
 				break;
@@ -87,9 +88,12 @@ status	parse_config(int argc, char **argv, t_config *config) {
 	config->is_privileged = !getuid();
 	if (config->pattern_length)
 	{
-		printf("PATTERN: 0x%.2x", config->pattern[0]);
-		for (int i = 1; i < config->pattern_length; i++)
-			printf("%.2x", config->pattern[i]);
+		printf("PATTERN: 0x");
+		for (int i = 0; i < config->pattern_length; i++)
+		{
+			unsigned int tmp = (unsigned char)config->pattern[i];
+			printf("%.2x", tmp);
+		}
 		printf("\n");
 	}
 	if (config->destination)
@@ -102,7 +106,5 @@ error:
 
 void	reset_config(t_config *config)
 {
-	free(config->destination);
-	free(config->program_name);
 	*config = (t_config){};
 }

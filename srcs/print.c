@@ -12,9 +12,9 @@ status		print_timestamp(t_config conf)
 	return (OK);
 }
 
-int	get_precision(long long time)
+int	get_precision(double time)
 {
-	return 3 - (time /1000 > 0) - (time /1000 > 10) - (time /1000 > 100);
+	return 3 - (time > 0) - (time > 10) - (time > 100);
 }
 
 status	print_icmp_message(t_packet pong)
@@ -112,35 +112,35 @@ status	print_pong(t_config config, t_packet pong)
 	if (config.timestamp && print_timestamp(config) != OK)
 		return (FATAL);
 	if (pong.icmp_type == ICMP_ECHOREPLY) {
-		printf("%zu bytes from %s: icmp_seq=%d ", pong.size, pong.ipstr,pong.seq);
-		printf("ttl=%d time=%.*f ms", pong.ttl, get_precision((pong.date - pong.date_request)),
+		printf("%zu bytes from %s: icmp_seq=%d ", pong.size - sizeof(struct iphdr), pong.ipstr,pong.seq);
+		printf("ttl=%d time=%.*f ms", pong.ttl, get_precision((pong.date - pong.date_request) / 1000),
 			   (float) (pong.date - pong.date_request) / 1000);
-		if (pong.is_dup)
+		if (pong.is_dup && (!config.broadcast || config.verbose))
 			printf(" (DUP!)");
+		if (config.audible)
+			printf("\a");
+		printf("\n");
 	}
-	else
+	else if (config.verbose)
 	{
 		printf("From %s: icmp_seq=%d ", pong.ipstr,pong.seq);
 		print_icmp_message(pong);
+		printf("\n");
 	}
-	if (config.audible)
-		printf("\a");
-	printf("\n");
 	return (OK);
 }
 
 status	print_ping(t_config conf, session ses, t_packet ping)
 {
 	char ipbuf[50];
-	(void)ses; (void)ping; (void)conf; (void)ipbuf;
-	if (!inet_ntop(ses.dst->ai_family,
-				   &ping.addr.sin_addr,
-				   ipbuf, 50))
+	if (!inet_ntop(ses.dst->ai_addr->sa_family, ses.dst->ai_addr->sa_family == AF_INET ?
+		(void*)&((struct sockaddr_in *)ses.dst->ai_addr)->sin_addr :
+		(void*)&((struct sockaddr_in6 *)ses.dst->ai_addr)->sin6_addr, ipbuf, 50))
 	{
 		my_perror(conf, "inet_ntop");
 		return (FATAL);
 	}
-	printf("PING %s(%s) %zd data bytes\n", conf.destination, ipbuf, ping.size);
+	printf("PING %s (%s) %zd(%zd) bytes of data.\n", conf.destination, ipbuf, ping.size - 8, ping.size + sizeof (struct iphdr));
 	return (OK);
 }
 
@@ -154,8 +154,8 @@ status	print_short_stat(t_stat stats)
 		long long int sdev = ft_sqrt((stats.sdev / stats.received) - (average * average));
 		printf(", min/avg/max/mdev = %.3f/%.3f/%.3f/%.3f ms", (float) stats.min / 1000, (float) average / 1000,
 			   (float) stats.max / 1000, (float) sdev / 1000);
-		printf("\n");
 	}
+	printf("\n");
 	return (OK);
 }
 
@@ -175,8 +175,9 @@ status	print_stat(t_config conf, t_stat stats)
 		printf("+%d errors, ", stats.errors);
 	printf("%d%% packet loss, time %lldms\n", stats.send ? 100 * (stats.send - stats.received) / stats.send : 0 , stats.time / 1000);
 	if (stats.received > 0)
-		printf("rtt min/avg/max/mdev = %.3f/%.3f/%.3f/%.3f ms", (float)stats.min / 1000, (float)stats.average / 1000,
+		printf("rtt min/avg/max/mdev = %.3f/%.3f/%.3f/%.3f ms\n", (float)stats.min / 1000, (float)stats.average / 1000,
 			   (float)stats.max / 1000, (float)stats.sdev / 1000);
-	printf("\n");
+	if (stats.max_pipe > 1)
+		printf("pipe %d\n", stats.max_pipe);
 	return (OK);
 }

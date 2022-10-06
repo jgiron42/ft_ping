@@ -9,13 +9,11 @@
 #include <netdb.h>
 #include <signal.h>
 #include <string.h>
-#include "libft/libft.h"
+#include "libft.h"
 #include <sys/time.h>
 #include <locale.h>
 #include <netinet/ip.h>
 #include <math.h>
-#define NAME ft_ping
-
 
 typedef struct	s_config
 {
@@ -33,7 +31,7 @@ typedef struct	s_config
 	bool	flood		: 1;
 	int		interval;
 	int		pattern_length;
-	char	pattern[16];
+	char	unsigned pattern[16];
 	char	*error;
 	int		ttl;
 	int		count;
@@ -69,16 +67,17 @@ typedef struct	s_ping
 
 typedef struct				s_stat
 {
-	int	send;
-	int	received;
-	int	duplicates;
-	int	errors;
-	int	nlost;
-	long long time;
-	long long average;
-	long long sdev;
-	long long min;
-	long long max;
+	int			send;
+	int			received;
+	int			max_pipe;
+	int			duplicates;
+	int			errors;
+	int			nlost;
+	long long	time;
+	long long	average;
+	long long	sdev;
+	long long	min;
+	long long	max;
 }							t_stat;
 
 #define DUPLICATE_SIZE 0x100000
@@ -94,6 +93,12 @@ typedef	struct session
 	char 				duplicate_table[DUPLICATE_SIZE];
 }				session;
 
+typedef enum {
+	WAITING = 1,
+	READY = 2,
+	ABORTED = 4,
+	PRINT_CURRENT = 8,
+} p_status;
 
 typedef	struct				s_icmp_datagram
 {
@@ -104,46 +109,53 @@ typedef	struct				s_icmp_datagram
 		struct {
 			unsigned short int identifier;
 			unsigned short int sequence;
-			long long date_send;
-		} echo;
+			struct timeval date_send;
+		} __attribute__((packed)) echo;
 		struct {
 			int unused;
 			struct iphdr ip;
 			unsigned char original[64];
-		} ttl_exceeded; // 11
+		} __attribute__((packed)) ttl_exceeded; // 11
 		struct {
 			unsigned char pointer;
 			unsigned char unused[3];
 			struct iphdr ip;
 			unsigned char original[64];
-		} parameter_problem;
+		} __attribute__((packed)) parameter_problem;
 		char data[48];
-	};
+	} __attribute__((packed));
 } __attribute__((packed))	t_echo_datagram;
 
-status	parse_config(int argc, char **argv, t_config *config);
+status		parse_config(int argc, char **argv, t_config *config);
 void		reset_config(t_config *config);
 void		show_help();
-status	ft_ping(t_config config);
-void	my_perror(t_config config, char *prefix);
+int			ft_ping(t_config config);
+void		my_perror(t_config config, char *prefix);
 
-status		print_timestamp();
-int	get_precision(long long time);
-status	print_pong(t_config config, t_packet pong);
-status	print_ping(t_config conf, session ses, t_packet ping);
-status	print_short_stat(t_stat stats);
-status	print_stat(t_config conf, t_stat stats);
-float	ft_sqrt(float nb);
-long long int ft_utime(void);
+status			print_timestamp();
+int				get_precision(double time);
+status			print_pong(t_config config, t_packet pong);
+status			print_ping(t_config conf, session ses, t_packet ping);
+status			print_short_stat(t_stat stats);
+status			print_stat(t_config conf, t_stat stats);
+float			ft_sqrt(float nb);
+long long int	ft_utime(void);
 
 char	check_duplicate(session ses, int seq);
 void	set_duplicate(session *ses, int seq);
 void	clear_duplicate(session *ses, int seq);
 
-int 	parse_buf(char *dst, char *src, size_t dst_len);
-bool int_validator(char *str, bool is_signed, char terminator);
-bool		range_validator(char *str, char *lower_bound, char *upper_bound);
-bool		ipv4_validator(char *str);
-bool	is_broadcast(char *ip);
+status				get_host(t_config config,struct addrinfo **res);
+status				getdatagram(t_echo_datagram *datagram, int sequence, t_config config);
+unsigned short int	checksum(void *data, size_t size);
+int 				parse_buf(unsigned char *dst, unsigned char *src, size_t dst_len);
+bool				int_validator(char *str, bool is_signed, char terminator);
+bool				range_validator(char *str, char *lower_bound, char *upper_bound);
+bool				ipv4_validator(char *str);
+bool				is_broadcast(char *ip);
 
 #endif //FT_PING_FT_PING_H
+
+
+
+

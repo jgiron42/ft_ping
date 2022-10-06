@@ -2,3 +2,6 @@
 	path = libft
 	url = git@github.com:jgiron42/libft.git
 	branch = no_norm
+[submodule "makefile-template"]
+	path = makefile-template
+	url = git@github.com:jgiron42/makefile-template.git
